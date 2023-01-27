@@ -83,9 +83,9 @@ impl Engine {
     /// 
     /// Returns `Some(i)`, where `i` is the ID of the first player to challenge
     /// the claim, or `None` if nobody challenges.
-    fn check_challenges(&self, card: Card) -> Option<usize> {
+    fn check_challenges(&self, acting_player: usize, card: Card) -> Option<usize> {
         for (i, player) in self.players.iter().enumerate() {
-            if i != self.active_player && player.check_challenge(self.active_player, card) && !player.is_eliminated() {
+            if i != acting_player && player.check_challenge(self.active_player, card) && !player.is_eliminated() {
                 return Some(i);
             }
         }
@@ -187,7 +187,7 @@ impl Engine {
         };
 
         // Check challenges
-        let challenger = self.check_challenges(card);
+        let challenger = self.check_challenges(self.active_player, card);
 
         match challenger {
             Some (i) => {
@@ -234,7 +234,7 @@ impl Engine {
                     println!("Player {} blocks {}", i, action);
     
                     // Check challenges to the block
-                    let challenger = self.check_challenges(card);
+                    let challenger = self.check_challenges(i, card);
     
                     match challenger {
                         Some (j) => {
