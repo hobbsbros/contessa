@@ -47,6 +47,7 @@ impl<'a> Engine<'a> {
         for (i, player) in players.iter_mut().enumerate() {
             let hand = [deck[2*i], deck[2*i + 1]];
             player.deal(hand);
+            player.compute_hands(&[]);
         }
         deck.drain(0..2*players.len());
 
@@ -83,6 +84,20 @@ impl<'a> Engine<'a> {
     /// This may be deprecated in a future release.
     pub fn get_active_player(&self) -> usize {
         self.active_player
+    }
+
+    /// Asks each player (in turn) whether or not he challenges a claim.
+    /// 
+    /// Returns `Some(i)`, where `i` is the ID of the first player to challenge
+    /// the claim, or `None` if nobody challenges.
+    pub fn check_challenge(&self, card: Card) -> Option<usize> {
+        for (i, player) in self.players.iter().enumerate() {
+            if player.check_challenge(self.active_player, card) {
+                return Some(i);
+            }
+        }
+
+        None
     }
 
     /// Allows the active player to take an action.
