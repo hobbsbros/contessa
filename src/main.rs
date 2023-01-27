@@ -6,18 +6,16 @@ use contessa::{
 };
 
 fn main() {
-    let mut players = vec![
+    let players = vec![
         Player::new(0, 3),
         Player::new(1, 3),
         Player::new(2, 3),
         Player::new(3, 3),
     ];
 
-    let mut engine = Engine::new(&mut players);
+    let mut engine = Engine::new(players);
 
-    dbg!(&engine);
+    let player = engine.play();
 
-    engine.turn();
-
-    dbg!(&engine);
+    dbg!(&player);
 }

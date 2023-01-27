@@ -11,17 +11,17 @@ use crate::{
 
 /// Holds the necessary information to run a Coup engine.
 #[derive(Debug)]
-pub struct Engine<'a> {
+pub struct Engine {
     deck: Vec<Card>,
-    players: &'a mut Vec<Player>,
+    players: Vec<Player>,
     killed: Vec<Card>,
     active_player: usize,
 }
 
 /// Implements the necessary behaviors for a Coup engine.
-impl<'a> Engine<'a> {
+impl Engine {
     /// Constructs a new engine with given parameters.
-    pub fn new(players: &'a mut Vec<Player>) -> Self {
+    pub fn new(mut players: Vec<Player>) -> Self {
         let mut deck = vec![
             Card::Duke,
             Card::Duke,
@@ -85,8 +85,23 @@ impl<'a> Engine<'a> {
     /// the claim, or `None` if nobody challenges.
     fn check_challenges(&self, card: Card) -> Option<usize> {
         for (i, player) in self.players.iter().enumerate() {
-            if i != self.active_player && player.check_challenge(self.active_player, card) {
+            if i != self.active_player && player.check_challenge(self.active_player, card) && !player.is_eliminated() {
                 return Some(i);
+            }
+        }
+
+        None
+    }
+
+    /// Asks each player (in turn) whether or not he block an action.
+    /// 
+    /// Returns `Some(i)`, where `i` is the ID of the first player to block
+    /// the action, or `None` if nobody blocks.
+    fn check_blocks(&self, action: Action) -> Option<(usize, Card)> {
+        for (i, player) in self.players.iter().enumerate() {
+            let (chk, card) = player.check_block(action);
+            if i != self.active_player && chk && !player.is_eliminated() {
+                return Some((i, card));
             }
         }
 
@@ -110,7 +125,9 @@ impl<'a> Engine<'a> {
                 // Instruct the target player to lose influence
                 // Place the card on the table (its value is public knowledge)
                 let lost = self.players[target].lose_influence();
-                self.killed.push(lost);
+                if lost != Card::None {
+                    self.killed.push(lost);
+                }
             },
             Action::Tax => {
                 self.players[self.active_player].gain_coins(3);
@@ -121,23 +138,41 @@ impl<'a> Engine<'a> {
                 // Instruct the target player to lose influence
                 // Place the card on the table (its value is public knowledge)
                 let lost = self.players[target].lose_influence();
-                self.killed.push(lost);
+                if lost != Card::None {
+                    self.killed.push(lost);
+                }
             }
             Action::Exchange => (),
             Action::Steal (target) => {
-                self.players[self.active_player].gain_coins(2);
-                self.players[target].lose_coins(2);
+                let stolen = self.players[target].lose_coins(2);
+                self.players[self.active_player].gain_coins(stolen);
             },
             Action::Pass => (),
         };
     }
 
     /// Asks a player to claim an action, check challenges, check blocks, and then execute the action.
-    pub fn turn(&mut self) {
-        // Ask the active player to select an action.
-        let action = self.players[self.active_player].select_action();
+    ///
+    /// Returns `Some(i)` if Player `i` has won.
+    /// Returns `None` if no player has won.
+    pub fn turn(&mut self) -> Option<usize> {
+        let mut eliminated_players = Vec::new();
+
+        // Work out probabilities
+        for (i, player) in self.players.iter_mut().enumerate() {
+            player.compute_hands(&self.killed);
+            if player.is_eliminated() {
+                eliminated_players.push(i);
+            }
+        }
+
+        // Ask the active player to select an action
+        let action = self.players[self.active_player].select_action(&eliminated_players);
 
         println!("Player {} selects {}", self.active_player, action);
+
+        // Has the active player been somehow prevented from completing the action?
+        let mut prevented = false;
 
         // Determine the corresponding card.
         let card = match action {
@@ -148,7 +183,7 @@ impl<'a> Engine<'a> {
             Action::Assassinate (_) => Card::Assassin,
             Action::Exchange => Card::Ambassador,
             Action::Steal (_) => Card::Captain,
-            Action::Pass => return,
+            Action::Pass => Card::None,
         };
 
         // Check challenges
@@ -163,30 +198,129 @@ impl<'a> Engine<'a> {
 
                     // Challenger loses influence
                     let killed = self.players[i].lose_influence();
-                    self.killed.push(killed);
+                    if killed != Card::None {
+                        self.killed.push(killed);
+                    }
 
                     // Active player adds his card to the bottom of the deck
                     // and draws a new card
                     self.deck.push(card);
                     self.players[self.active_player].replace(card, self.deck[0]);
-                    self.deck.drain(0..1);                    
+                    self.deck.drain(0..1);
                 } else {
                     println!("Player {} loses influence", self.active_player);
 
                     // Active player loses influence
                     let killed = self.players[self.active_player].lose_influence();
-                    self.killed.push(killed);
+                    if killed != Card::None {
+                        self.killed.push(killed);
+                    }
 
                     // The active player does not complete the action
-                    return;
+                    prevented = true;
                 }
             },
-            None => {
-                
-            },
+            None => {},
         }
 
-        // The active player completes the action
-        self.complete_action(action);
+        // Check blocks
+        let block = self.check_blocks(action);
+
+        if !prevented {
+            match block {
+                Some ((i, card)) => {
+                    // Player I blocks
+    
+                    println!("Player {} blocks {}", i, action);
+    
+                    // Check challenges to the block
+                    let challenger = self.check_challenges(card);
+    
+                    match challenger {
+                        Some (j) => {
+                            // Player J challenges the block
+    
+                            println!("Player {} challenges Player {}", j, i);
+    
+                            if self.players[i].check(card) {
+                                println!("Player {} loses influence", j);
+    
+                                // Player J loses influence
+                                let killed = self.players[j].lose_influence();
+                                if killed != Card::None {
+                                    self.killed.push(killed);
+                                }
+    
+                                // Player I adds his card to the bottom of the deck
+                                // and draws a new card
+                                self.deck.push(card);
+                                self.players[i].replace(card, self.deck[0]);
+                                self.deck.drain(0..1);
+    
+                                // The active player does not complete the action
+                                prevented = true;
+                            } else {
+                                println!("Player {} loses influence", i);
+    
+                                // Player I loses influence
+                                let killed = self.players[i].lose_influence();
+                                if killed != Card::None {
+                                    self.killed.push(killed);
+                                }
+    
+                                // The active player does complete the action
+                            }
+                        },
+                        // If nobody challenges, the block is in effect
+                        None => prevented = true,
+                    }
+                },
+                None => {},
+            }
+        }
+
+        if !prevented {
+            // The active player completes the action
+            self.complete_action(action);
+        }
+
+        self.rotate_active_player();
+
+        println!();
+
+        for (i, player) in self.players.iter().enumerate() {
+            println!("Player {}", i);
+            println!("Coins: {}", player.get_coins());
+            println!("Eliminated: {}", player.is_eliminated());
+            println!();
+        }
+
+        println!();
+        println!();
+        println!();
+
+        if eliminated_players.len() == self.players.len() - 1 {
+            for i in 0..self.players.len() {
+                if !eliminated_players.contains(&i) {
+                    return Some(i);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Play a game and return the data of the player who won.
+    pub fn play(&mut self) -> Player {
+        let mut option: Option<usize> = None;
+
+        loop {
+            if let Some(player) = option {
+                println!("Player {} wins!", player);
+                return self.players[player].clone();
+            } else {
+                option = self.turn();
+            }
+        }
     }
 }

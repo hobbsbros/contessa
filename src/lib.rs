@@ -69,7 +69,7 @@ impl fmt::Display for Action {
 }
 
 /// Holds a perceived hand.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PerceivedHand {
     hand: HashMap<Card, f64>,
 }
@@ -115,7 +115,7 @@ impl PerceivedHand {
 }
 
 /// Holds the information and performs the actions of a player.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Player {
     /// Stores this player's ID.
     id: usize,
@@ -168,9 +168,9 @@ impl Player {
     }
 
     /// "Mutates" the current player by slightly modifying the cutoff probabilities.
-    pub fn mutate(&self, id: usize) -> Self {
+    pub fn mutate(&self) -> Self {
         Self {
-            id,
+            id: self.id,
             hand: [Card::None, Card::None],
             coins: 2,
             liar_cutoff: self.liar_cutoff + 0.01 * (2.0*random::<f64>() - 1.0),
@@ -195,6 +195,11 @@ impl Player {
         } else {
             self.hand[1] = new;
         }
+    }
+
+    /// Gets the number of coins this player has.
+    pub fn get_coins(&self) -> u8 {
+        self.coins
     }
     
     /// Computes *a priori* probabilities of each player having certain cards.
@@ -237,17 +242,13 @@ impl Player {
         }
 
         // Remove your current two cards
-        let current = match counts.get(&self.hand[0]) {
-            Some(v) => v,
-            None => todo!(),
-        };
-        counts.insert(self.hand[0], current - 1.0);
+        if let Some(count) = counts.get(&self.hand[0]) {
+            counts.insert(self.hand[0], count - 1.0);
+        }
 
-        let current = match counts.get(&self.hand[1]) {
-            Some(v) => v,
-            None => todo!(),
-        };
-        counts.insert(self.hand[1], current - 1.0);
+        if let Some(count) = counts.get(&self.hand[1]) {
+            counts.insert(self.hand[1], count - 1.0);
+        }
 
         available -= 2.0;
 
@@ -298,8 +299,15 @@ impl Player {
     }
 
     /// Loses the number of coins specified.
-    pub fn lose_coins(&mut self, coins: u8) {
-        self.coins -= coins;
+    pub fn lose_coins(&mut self, coins: u8) -> u8 {
+        if self.coins >= coins {
+            self.coins -= coins;
+            coins
+        } else {
+            let stolen = self.coins;
+            self.coins = 0;
+            stolen
+        }
     }
 
     /// Forces the player to lose one influence.
@@ -307,9 +315,9 @@ impl Player {
     /// Right now, this is a random selection.  It will be trained later, probably using
     /// reinforcement learning or regret minimization.
     pub fn lose_influence(&mut self) -> Card {
-        let lost = if self.hand[0] == Card::None {
+        let lost = if self.hand[0] == Card::None && self.hand[1] != Card::None {
             1
-        } else if self.hand[1] == Card::None {
+        } else if self.hand[1] == Card::None && self.hand[0] != Card::None {
             0
         } else if random() {
             1
@@ -335,25 +343,76 @@ impl Player {
             return false;
         }
 
+        if self.is_eliminated() {
+            // You can't challenge if you're out
+            return false;
+        }
+
         // Note: it's OK to use `Option::unwrap` here because we know we're providing
         // one of the five game cards (we just checked `Card::None`) and we know
         // for sure that each of these cards are in each of our perceived hands
         self.perceived_hands[active_player].get(&card).unwrap() < &self.liar_cutoff
     }
 
+    /// Asks this player if he blocks an action.
+    /// 
+    /// Returns `true` if the player blocks and `false` otherwise.  Also returns
+    /// the card with which the player blocks.
+    /// 
+    /// Right now, this is based on a trained "lying" threshold.  This may
+    /// change in the future.
+    /// 
+    /// Right now, this player is "perfectly selfish": it will only block actions
+    /// against it.  This may change in the future.
+    pub fn check_block(&self, action: Action) -> (bool, Card) {
+        if self.is_eliminated() {
+            // You can't block if you're out
+            return (false, Card::None);
+        }
+
+        // Note: it's OK to use `Option::unwrap` here because we know we're providing one
+        // of the five game cards (we are sure we haven't passed `Card::None`) and we know
+        // for sure that each of these cards are in each of our perceived hands
+        match action {
+            Action::ForeignAid => (self.perceived_hands[self.id].get(&Card::Duke).unwrap() > &self.lying_cutoff, Card::Duke),
+            Action::Assassinate (i) => (i == self.id && self.perceived_hands[self.id].get(&Card::Contessa).unwrap() > &self.lying_cutoff, Card::Duke),
+            Action::Steal (i) => {
+                // For now, only block actions against yourself
+                if i != self.id {
+                    return (false, Card::None);
+                }
+
+                let captain = self.perceived_hands[self.id].get(&Card::Captain).unwrap();
+                let ambassador = self.perceived_hands[self.id].get(&Card::Ambassador).unwrap();
+
+                if captain > ambassador {
+                    return (captain > &self.lying_cutoff, Card::Captain);
+                } else {
+                    return (ambassador > &self.lying_cutoff, Card::Ambassador);
+                }
+            },
+            _ => (false, Card::None),
+        }
+    }
+
+    /// Checks whether or not a player is still in the game.
+    pub fn is_eliminated(&self) -> bool {
+        self.hand == [Card::None, Card::None] 
+    }
+
     /// Selects the list of actions available to the player.
-    fn get_available_actions(&self) -> Vec<Action> {
+    fn get_available_actions(&self, eliminated_players: &[usize]) -> Vec<Action> {
         let mut actions: Vec<Action> = Vec::new();
 
-        // If this player's hand is `[None, None]`, he must Pass.
-        if self.hand == [Card::None, Card::None] {
+        // If this player is eliminated, he must Pass.
+        if self.is_eliminated() {
             return vec![Action::Pass];
         }
 
         // If this player has 10 coins or more, he must Coup.
         if self.coins >= 10 {
             for i in 0..=self.opponents {
-                if i != self.id {
+                if i != self.id && !eliminated_players.contains(&i) {
                     actions.push(Action::Coup (i));
                 }
             }
@@ -369,7 +428,7 @@ impl Player {
         // at least 7 coins.
         if self.coins >= 7 {
             for i in 0..=self.opponents {
-                if i != self.id {
+                if i != self.id && !eliminated_players.contains(&i) {
                     actions.push(Action::Coup (i));
                 }
             }
@@ -385,7 +444,7 @@ impl Player {
         // Captains can Steal
         if self.hand.contains(&Card::Captain) {
             for i in 0..=self.opponents {
-                if i != self.id {
+                if i != self.id && !eliminated_players.contains(&i) {
                     actions.push(Action::Steal (i));
                 }
             }
@@ -399,7 +458,7 @@ impl Player {
         // Assassins can Assassinate
         if self.hand.contains(&Card::Assassin) && self.coins >= 3 {
             for i in 0..=self.opponents {
-                if i != self.id {
+                if i != self.id && !eliminated_players.contains(&i) {
                     actions.push(Action::Assassinate (i));
                 }
             }
@@ -421,7 +480,7 @@ impl Player {
         // Captains can Steal
         if !self.hand.contains(&Card::Captain) && self.perceived_hands[self.id].get(&Card::Captain).unwrap() > &self.lying_cutoff {
             for i in 0..=self.opponents {
-                if i != self.id {
+                if i != self.id && !eliminated_players.contains(&i) {
                     actions.push(Action::Steal (i));
                 }
             }
@@ -435,7 +494,7 @@ impl Player {
         // Assassins can Assassinate
         if !self.hand.contains(&Card::Assassin) && self.perceived_hands[self.id].get(&Card::Assassin).unwrap() > &self.lying_cutoff && self.coins >= 3 {
             for i in 0..=self.opponents {
-                if i != self.id {
+                if i != self.id && !eliminated_players.contains(&i) {
                     actions.push(Action::Assassinate (i));
                 }
             }
@@ -447,8 +506,8 @@ impl Player {
     }
 
     /// Select an action based on actions available.
-    pub fn select_action(&self) -> Action {
-        let actions = self.get_available_actions();
+    pub fn select_action(&self, eliminated_players: &[usize]) -> Action {
+        let actions = self.get_available_actions(eliminated_players);
 
         // Later this will be modified to be better than random selection.
 
