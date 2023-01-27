@@ -2,9 +2,15 @@
 
 mod engine;
 
-use std::collections::HashMap;
+use std::{
+    fmt,
+    collections::HashMap,
+};
 
-use rand::random;
+use rand::{
+    random,
+    seq::SliceRandom,
+};
 
 pub use engine::{
     Engine,
@@ -22,7 +28,7 @@ pub enum Card {
 }
 
 /// Enumerates the actions available in the game.
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Action {
     Income,
 
@@ -43,6 +49,23 @@ pub enum Action {
 
     /// Note that a player can only `Pass` if he has been eliminated (has zero influence).
     Pass,
+}
+
+impl fmt::Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let output = match self {
+            Action::Income => "Income".to_string(),
+            Action::ForeignAid => "ForeignAid".to_string(),
+            Action::Coup (i) => format!("Coup player {}", i),
+            Action::Tax => "Tax".to_string(),
+            Action::Assassinate (i) => format!("Assassinate player {}", i),
+            Action::Exchange => "Exchange".to_string(),
+            Action::Steal (i) => format!("Steal from player {}", i),
+            Action::Pass => "Pass".to_string(),
+        };
+
+        write!(f, "{}", output)
+    }
 }
 
 /// Holds a perceived hand.
@@ -157,6 +180,23 @@ impl Player {
         }
     }
 
+    /// Checks whether or not a player has a given card.
+    pub fn check(&self, card: Card) -> bool {
+        self.hand.contains(&card)
+    }
+
+    /// Replaces one of the cards in this player's hand with the given card.
+    /// 
+    /// Note: call this function only when you know for sure that the outgoing
+    /// card exists in this player's hand or you will mess things up.
+    pub fn replace(&mut self, current: Card, new: Card) {
+        if self.hand[0] == current {
+            self.hand[0] = new;
+        } else {
+            self.hand[1] = new;
+        }
+    }
+    
     /// Computes *a priori* probabilities of each player having certain cards.
     pub fn compute_hands(&mut self, killed: &[Card]) {
         let mut hands = Vec::new();
@@ -285,18 +325,30 @@ impl Player {
 
     /// Asks this player if he challenges a claim.
     /// 
+    /// Returns `true` if the player challenges and `false` otherwise.
+    /// 
     /// Right now, this is based on a trained "liar" threshold.  This may
     /// change in the future.
     pub fn check_challenge(&self, active_player: usize, card: Card) -> bool {
+        if card == Card::None {
+            // You can't challenge Income, ForeignAid, or Coup
+            return false;
+        }
+
         // Note: it's OK to use `Option::unwrap` here because we know we're providing
-        // one of the five game cards (`Card::None` will never be passed) and we know
+        // one of the five game cards (we just checked `Card::None`) and we know
         // for sure that each of these cards are in each of our perceived hands
         self.perceived_hands[active_player].get(&card).unwrap() < &self.liar_cutoff
     }
 
     /// Selects the list of actions available to the player.
-    pub fn get_available_actions(&self) -> Vec<Action> {
+    fn get_available_actions(&self) -> Vec<Action> {
         let mut actions: Vec<Action> = Vec::new();
+
+        // If this player's hand is `[None, None]`, he must Pass.
+        if self.hand == [Card::None, Card::None] {
+            return vec![Action::Pass];
+        }
 
         // If this player has 10 coins or more, he must Coup.
         if self.coins >= 10 {
@@ -345,7 +397,7 @@ impl Player {
         }
 
         // Assassins can Assassinate
-        if self.hand.contains(&Card::Assassin) {
+        if self.hand.contains(&Card::Assassin) && self.coins >= 3 {
             for i in 0..=self.opponents {
                 if i != self.id {
                     actions.push(Action::Assassinate (i));
@@ -381,7 +433,7 @@ impl Player {
         }
 
         // Assassins can Assassinate
-        if !self.hand.contains(&Card::Assassin) && self.perceived_hands[self.id].get(&Card::Assassin).unwrap() > &self.lying_cutoff {
+        if !self.hand.contains(&Card::Assassin) && self.perceived_hands[self.id].get(&Card::Assassin).unwrap() > &self.lying_cutoff && self.coins >= 3 {
             for i in 0..=self.opponents {
                 if i != self.id {
                     actions.push(Action::Assassinate (i));
@@ -392,5 +444,16 @@ impl Player {
         // Contessas can't take any actions :(
 
         actions
+    }
+
+    /// Select an action based on actions available.
+    pub fn select_action(&self) -> Action {
+        let actions = self.get_available_actions();
+
+        // Later this will be modified to be better than random selection.
+
+        // Note: it's OK to use `Option::unwrap` here because we know that at least
+        // one action will be available (Income)
+        *actions.choose(&mut rand::thread_rng()).unwrap()
     }
 }

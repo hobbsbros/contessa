@@ -79,20 +79,13 @@ impl<'a> Engine<'a> {
         &self.killed
     }
 
-    /// Returns the active player.
-    /// 
-    /// This may be deprecated in a future release.
-    pub fn get_active_player(&self) -> usize {
-        self.active_player
-    }
-
     /// Asks each player (in turn) whether or not he challenges a claim.
     /// 
     /// Returns `Some(i)`, where `i` is the ID of the first player to challenge
     /// the claim, or `None` if nobody challenges.
-    pub fn check_challenge(&self, card: Card) -> Option<usize> {
+    fn check_challenges(&self, card: Card) -> Option<usize> {
         for (i, player) in self.players.iter().enumerate() {
-            if player.check_challenge(self.active_player, card) {
+            if i != self.active_player && player.check_challenge(self.active_player, card) {
                 return Some(i);
             }
         }
@@ -100,24 +93,30 @@ impl<'a> Engine<'a> {
         None
     }
 
-    /// Allows the active player to take an action.
-    pub fn take_action(&mut self, action: Action) {
-        let player = &mut self.players[self.active_player];
+    /// Allows the active player to complete an action.
+    fn complete_action(&mut self, action: Action) {
+        println!("Player {} performs {}", self.active_player, action);
 
         match action {
-            Action::Income => player.gain_coins(1),
-            Action::ForeignAid => player.gain_coins(2),
+            Action::Income => {
+                self.players[self.active_player].gain_coins(1);
+            },
+            Action::ForeignAid => {
+                self.players[self.active_player].gain_coins(2);
+            },
             Action::Coup (target) => {
-                player.lose_coins(7);
+                self.players[self.active_player].lose_coins(7);
 
                 // Instruct the target player to lose influence
                 // Place the card on the table (its value is public knowledge)
                 let lost = self.players[target].lose_influence();
                 self.killed.push(lost);
             },
-            Action::Tax => player.gain_coins(3),
+            Action::Tax => {
+                self.players[self.active_player].gain_coins(3);
+            },
             Action::Assassinate (target) => {
-                player.lose_coins(3);
+                self.players[self.active_player].lose_coins(3);
 
                 // Instruct the target player to lose influence
                 // Place the card on the table (its value is public knowledge)
@@ -126,10 +125,68 @@ impl<'a> Engine<'a> {
             }
             Action::Exchange => (),
             Action::Steal (target) => {
-                player.gain_coins(2);
+                self.players[self.active_player].gain_coins(2);
                 self.players[target].lose_coins(2);
             },
             Action::Pass => (),
         };
+    }
+
+    /// Asks a player to claim an action, check challenges, check blocks, and then execute the action.
+    pub fn turn(&mut self) {
+        // Ask the active player to select an action.
+        let action = self.players[self.active_player].select_action();
+
+        println!("Player {} selects {}", self.active_player, action);
+
+        // Determine the corresponding card.
+        let card = match action {
+            Action::Income => Card::None,
+            Action::ForeignAid => Card::None,
+            Action::Coup (_) => Card::None,
+            Action::Tax => Card::Duke,
+            Action::Assassinate (_) => Card::Assassin,
+            Action::Exchange => Card::Ambassador,
+            Action::Steal (_) => Card::Captain,
+            Action::Pass => return,
+        };
+
+        // Check challenges
+        let challenger = self.check_challenges(card);
+
+        match challenger {
+            Some (i) => {
+                println!("Player {} challenges {}", i, action);
+
+                if self.players[self.active_player].check(card) {
+                    println!("Player {} loses influence", i);
+
+                    // Challenger loses influence
+                    let killed = self.players[i].lose_influence();
+                    self.killed.push(killed);
+
+                    // Active player adds his card to the bottom of the deck
+                    // and draws a new card
+                    self.deck.push(card);
+                    self.players[self.active_player].replace(card, self.deck[0]);
+                    self.deck.drain(0..1);                    
+                } else {
+                    println!("Player {} loses influence", self.active_player);
+
+                    // Active player loses influence
+                    let killed = self.players[self.active_player].lose_influence();
+                    self.killed.push(killed);
+
+                    // The active player does not complete the action
+                    return;
+                }
+            },
+            None => {
+                
+            },
+        }
+
+        // The active player completes the action
+        self.complete_action(action);
     }
 }

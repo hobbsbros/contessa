@@ -13,7 +13,11 @@ fn main() {
         Player::new(3, 3),
     ];
 
-    let engine = Engine::new(&mut players);
+    let mut engine = Engine::new(&mut players);
+
+    dbg!(&engine);
+
+    engine.turn();
 
     dbg!(&engine);
 }
