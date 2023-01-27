@@ -27,7 +27,7 @@ pub enum Card {
 }
 
 /// Enumerates the actions available in the game.
-#[derive(Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum Action {
     Income,
 
@@ -212,7 +212,26 @@ impl Player {
         }
     }
 
-    /// "Mutates" the current player by slightly modifying the cutoff probabilities.
+    /// Sets the ID of this player.
+    pub fn set_id(&mut self, id: usize) {
+        self.id = id;
+    }
+
+    /// Consumes this player and returns a new one with the specified ID.
+    pub fn with_id(self, id: usize) -> Self {
+        Self {
+            id,
+            hand: self.hand,
+            coins: self.coins,
+            liar_cutoff: self.liar_cutoff,
+            lying_cutoff: self.lying_cutoff,
+            utilities: self.utilities,
+            opponents: self.opponents,
+            perceived_hands: self.perceived_hands,
+        }
+    }
+
+    /// "Mutates" this player by slightly modifying the cutoff probabilities.
     pub fn mutate(&self) -> Self {
         Self {
             id: self.id,
@@ -224,6 +243,13 @@ impl Player {
             opponents: self.opponents,
             perceived_hands: Vec::new(),
         }
+    }
+
+    /// Prepares this player for the next game.
+    pub fn clear(&mut self) {
+        self.hand = [Card::None, Card::None];
+        self.coins = 2;
+        self.perceived_hands = Vec::new();
     }
 
     /// Checks whether or not a player has a given card.
@@ -552,8 +578,8 @@ impl Player {
     }
 
     /// Computes the utility of a given action according to a utility table.
-    pub fn compute_utility(&self, action: Action) -> f64 {
-        match action {
+    fn compute_utility(&self, action: Action) -> f64 {
+        let mut utility = match action {
             Action::Income => self.utilities.income,
             Action::ForeignAid => self.utilities.foreignaid,
             Action::Coup (_) => self.utilities.coup,
@@ -562,7 +588,27 @@ impl Player {
             Action::Exchange => self.utilities.exchange,
             Action::Steal (_) => self.utilities.steal,
             Action::Pass => 0.0,
+        };
+
+        if action == Action::ForeignAid {
+            for (i, hand) in self.perceived_hands.iter().enumerate() {
+                // Somebody probably has a duke
+                // Note: it's OK to use `Option::unwrap` here because
+                // we know we put `Card::Duke` in there earlier
+                if i != self.id && hand.get(&Card::Duke).unwrap() > &self.liar_cutoff {
+                    utility = 0.0;
+                }
+            }
+        } else if let Action::Steal (target) = action {
+            // Note: it's OK to use `Option::unwrap` here because
+            // we know we put `Card::Captain` and `Card::Ambassador` in there earlier
+            if self.perceived_hands[target].get(&Card::Captain).unwrap() > &self.liar_cutoff
+            || self.perceived_hands[target].get(&Card::Ambassador).unwrap() > &self.liar_cutoff {
+                utility = 0.0;
+            }
         }
+
+        utility
     }
     
     /// Select an action based on actions available.
@@ -578,8 +624,9 @@ impl Player {
         // we are passing a valid `f64` from our utility table
         utilities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
-        // Note: it's OK to use `Option::unwrap` here because we know
-        // that at least one action will be available (even if it's `Pass`)
-        utilities.iter().nth(0).unwrap().0
+        match utilities.iter().nth(0) {
+            Some(action) => action.0,
+            None => Action::Pass,
+        }
     }
 }

@@ -110,8 +110,6 @@ impl Engine {
 
     /// Allows the active player to complete an action.
     fn complete_action(&mut self, action: Action) {
-        println!("Player {} performs {}", self.active_player, action);
-
         match action {
             Action::Income => {
                 self.players[self.active_player].gain_coins(1);
@@ -155,7 +153,7 @@ impl Engine {
     ///
     /// Returns `Some(i)` if Player `i` has won.
     /// Returns `None` if no player has won.
-    pub fn turn(&mut self) -> Option<usize> {
+    pub fn turn(&mut self, verbose: bool) -> Option<usize> {
         let mut eliminated_players = Vec::new();
 
         // Work out probabilities
@@ -169,7 +167,9 @@ impl Engine {
         // Ask the active player to select an action
         let action = self.players[self.active_player].select_action(&eliminated_players);
 
-        println!("Player {} selects {}", self.active_player, action);
+        if verbose {
+            println!("Player {} selects {}", self.active_player, action);
+        }
 
         // Has the active player been somehow prevented from completing the action?
         let mut prevented = false;
@@ -191,10 +191,14 @@ impl Engine {
 
         match challenger {
             Some (i) => {
-                println!("Player {} challenges {}", i, action);
+                if verbose {
+                    println!("Player {} challenges {}", i, action);
+                }
 
                 if self.players[self.active_player].check(card) {
-                    println!("Player {} loses influence", i);
+                    if verbose {
+                        println!("Player {} loses influence", i);
+                    }
 
                     // Challenger loses influence
                     let killed = self.players[i].lose_influence();
@@ -208,8 +212,10 @@ impl Engine {
                     self.players[self.active_player].replace(card, self.deck[0]);
                     self.deck.drain(0..1);
                 } else {
-                    println!("Player {} loses influence", self.active_player);
-
+                    if verbose {
+                        println!("Player {} loses influence", self.active_player);
+                    }
+                    
                     // Active player loses influence
                     let killed = self.players[self.active_player].lose_influence();
                     if killed != Card::None {
@@ -231,7 +237,9 @@ impl Engine {
                 Some ((i, card)) => {
                     // Player I blocks
     
-                    println!("Player {} blocks {}", i, action);
+                    if verbose {
+                        println!("Player {} blocks {}", i, action);
+                    }
     
                     // Check challenges to the block
                     let challenger = self.check_challenges(i, card);
@@ -240,10 +248,14 @@ impl Engine {
                         Some (j) => {
                             // Player J challenges the block
     
-                            println!("Player {} challenges Player {}", j, i);
+                            if verbose {
+                                println!("Player {} challenges Player {}", j, i);
+                            }
     
                             if self.players[i].check(card) {
-                                println!("Player {} loses influence", j);
+                                if verbose {
+                                    println!("Player {} loses influence", j);
+                                }
     
                                 // Player J loses influence
                                 let killed = self.players[j].lose_influence();
@@ -260,7 +272,9 @@ impl Engine {
                                 // The active player does not complete the action
                                 prevented = true;
                             } else {
-                                println!("Player {} loses influence", i);
+                                if verbose {
+                                    println!("Player {} loses influence", i);
+                                }
     
                                 // Player I loses influence
                                 let killed = self.players[i].lose_influence();
@@ -281,23 +295,28 @@ impl Engine {
 
         if !prevented {
             // The active player completes the action
+            if verbose {
+                println!("Player {} performs {}", self.active_player, action);
+            }
             self.complete_action(action);
         }
 
         self.rotate_active_player();
 
-        println!();
+        if verbose {
+            println!();
 
-        for (i, player) in self.players.iter().enumerate() {
-            println!("Player {}", i);
-            println!("Coins: {}", player.get_coins());
-            println!("Eliminated: {}", player.is_eliminated());
+            for (i, player) in self.players.iter().enumerate() {
+                println!("Player {}", i);
+                println!("Coins: {}", player.get_coins());
+                println!("Eliminated: {}", player.is_eliminated());
+                println!();
+            }
+
+            println!();
+            println!();
             println!();
         }
-
-        println!();
-        println!();
-        println!();
 
         if eliminated_players.len() == self.players.len() - 1 {
             for i in 0..self.players.len() {
@@ -311,15 +330,27 @@ impl Engine {
     }
 
     /// Play a game and return the data of the player who won.
-    pub fn play(&mut self) -> Player {
+    /// 
+    /// Caps a game at 1000 turns.  If 1000 turns are reached,
+    /// Player 0 wins by default.
+    pub fn play(&mut self, verbose: bool) -> Player {
         let mut option: Option<usize> = None;
+
+        let mut counter = 0;
 
         loop {
             if let Some(player) = option {
-                println!("Player {} wins!", player);
+                if verbose {
+                    println!("Player {} wins!", player);
+                }
                 return self.players[player].clone();
             } else {
-                option = self.turn();
+                option = self.turn(verbose);
+                counter += 1;
+            }
+
+            if counter == 1000 {
+                return self.players[0].clone();
             }
         }
     }
