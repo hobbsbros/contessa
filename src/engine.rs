@@ -7,13 +7,13 @@ use crate::{
     Card,
     Action,
     Player,
+    PlayerMetadata,
 };
 
 /// Holds the necessary information to run a Coup engine.
-#[derive(Debug)]
 pub struct Engine {
     deck: Vec<Card>,
-    players: Vec<Player>,
+    players: Vec<Box<dyn Player>>,
     killed: Vec<Card>,
     active_player: usize,
 }
@@ -21,7 +21,7 @@ pub struct Engine {
 /// Implements the necessary behaviors for a Coup engine.
 impl Engine {
     /// Constructs a new engine with given parameters.
-    pub fn new(mut players: Vec<Player>) -> Self {
+    pub fn new(mut players: Vec<Box<dyn Player>>) -> Self {
         let mut deck = vec![
             Card::Duke,
             Card::Duke,
@@ -333,7 +333,7 @@ impl Engine {
     /// 
     /// Caps a game at 1000 turns.  If 1000 turns are reached,
     /// Player 0 wins by default.
-    pub fn play(&mut self, verbose: bool) -> Player {
+    pub fn play(&mut self, verbose: bool) -> PlayerMetadata {
         let mut option: Option<usize> = None;
 
         let mut counter = 0;
@@ -343,14 +343,14 @@ impl Engine {
                 if verbose {
                     println!("Player {} wins!", player);
                 }
-                return self.players[player].clone();
+                return self.players[player].get_metadata();
             } else {
                 option = self.turn(verbose);
                 counter += 1;
             }
 
             if counter == 1000 {
-                return self.players[0].clone();
+                return self.players[0].get_metadata();
             }
         }
     }
