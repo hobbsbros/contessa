@@ -19,6 +19,9 @@ pub trait Player {
     /// card exists in this player's hand or you will mess things up.
     fn replace(&mut self, current: Card, new: Card);
 
+    /// Exchanges cards (used on `Ambassador`).
+    fn exchange(&mut self, cards: &[Card]) -> Vec<Card>;
+
     /// Gets the number of coins this player has.
     fn get_coins(&self) -> u8;
 

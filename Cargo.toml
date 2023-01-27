@@ -14,4 +14,5 @@ path = "src/lib.rs"
 name = "contessa"
 
 [dependencies]
+inquire = "0.5.3"
 rand = "0.8.5"

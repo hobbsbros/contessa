@@ -70,6 +70,14 @@ impl Player for Agent {
         }
     }
 
+    /// Exchange cards (used by `Ambassador`).
+    /// 
+    /// Right now, this discards the two cards drawn.  This will
+    /// be changed to be more strategic in the future.
+    fn exchange(&mut self, cards: &[Card]) -> Vec<Card> {
+        cards.to_vec()
+    }
+
     /// Gets the number of coins this player has.
     fn get_coins(&self) -> u8 {
         self.coins
@@ -270,7 +278,7 @@ impl Player for Agent {
 
     /// Checks whether or not a player is still in the game.
     fn is_eliminated(&self) -> bool {
-        self.hand == [Card::None, Card::None] 
+        self.hand == [Card::None, Card::None]
     }
 
     /// Select an action based on actions available.
@@ -373,12 +381,12 @@ impl Agent {
 
     /// Selects the list of actions available to the player.
     fn get_available_actions(&self, eliminated_players: &[usize]) -> Vec<Action> {
-        let mut actions: Vec<Action> = Vec::new();
-
         // If this player is eliminated, he must Pass.
         if self.is_eliminated() {
             return vec![Action::Pass];
         }
+
+        let mut actions: Vec<Action> = Vec::new();
 
         // If this player has 10 coins or more, he must Coup.
         if self.coins >= 10 {

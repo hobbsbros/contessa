@@ -2,16 +2,27 @@
 
 use contessa::{
     Agent,
+    Human,
     Player,
     Engine,
 };
 
 fn main() {
-    train(25);    
+    let players: Vec<Box<dyn Player>> = vec![
+        Box::new(Human::new(0, 3)),
+        Box::new(Agent::new(1, 3)),
+        Box::new(Agent::new(2, 3)),
+        Box::new(Agent::new(3, 3)),
+    ];
+
+    let mut engine = Engine::new(players);
+    let _ = engine.play(true);
+
+    println!("Thanks for playing!");
 }
 
 /// Train 1000 Contessa Engines against one another for a specified number of generations.
-fn train(generations: usize) {
+fn _train(generations: usize) {
     // FIRST GENERATION //
     let mut winners = Vec::new();
 
@@ -33,7 +44,7 @@ fn train(generations: usize) {
 
     // FOLLOWING GENERATIONS //
 
-    for gen in 0..(generations - 1) {
+    for gen in 1..generations {
         // Mutate players and set up new games
         let mut new_winners = Vec::new();
 

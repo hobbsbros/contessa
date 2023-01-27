@@ -47,7 +47,6 @@ impl Engine {
         for (i, player) in players.iter_mut().enumerate() {
             let hand = [deck[2*i], deck[2*i + 1]];
             player.deal(hand);
-            player.compute_hands(&[]);
         }
         deck.drain(0..2*players.len());
 
@@ -83,9 +82,9 @@ impl Engine {
     /// 
     /// Returns `Some(i)`, where `i` is the ID of the first player to challenge
     /// the claim, or `None` if nobody challenges.
-    fn check_challenges(&self, acting_player: usize, card: Card) -> Option<usize> {
+    fn check_challenges(&self, actor: usize, card: Card) -> Option<usize> {
         for (i, player) in self.players.iter().enumerate() {
-            if i != acting_player && player.check_challenge(self.active_player, card) && !player.is_eliminated() {
+            if i != actor && player.check_challenge(actor, card) && !player.is_eliminated() {
                 return Some(i);
             }
         }
@@ -97,10 +96,10 @@ impl Engine {
     /// 
     /// Returns `Some(i)`, where `i` is the ID of the first player to block
     /// the action, or `None` if nobody blocks.
-    fn check_blocks(&self, action: Action) -> Option<(usize, Card)> {
+    fn check_blocks(&self, actor: usize, action: Action) -> Option<(usize, Card)> {
         for (i, player) in self.players.iter().enumerate() {
             let (chk, card) = player.check_block(action);
-            if i != self.active_player && chk && !player.is_eliminated() {
+            if i != actor && chk && !player.is_eliminated() {
                 return Some((i, card));
             }
         }
@@ -140,7 +139,14 @@ impl Engine {
                     self.killed.push(lost);
                 }
             }
-            Action::Exchange => (),
+            Action::Exchange => {
+                let new = &self.deck[0..2];
+                let discarded = self.players[self.active_player].exchange(new);
+                self.deck.drain(0..2);
+                for card in discarded {
+                    self.deck.push(card);
+                }
+            },
             Action::Steal (target) => {
                 let stolen = self.players[target].lose_coins(2);
                 self.players[self.active_player].gain_coins(stolen);
@@ -229,10 +235,10 @@ impl Engine {
             None => {},
         }
 
-        // Check blocks
-        let block = self.check_blocks(action);
-
         if !prevented {
+            // Check blocks
+            let block = self.check_blocks(self.active_player, action);
+
             match block {
                 Some ((i, card)) => {
                     // Player I blocks

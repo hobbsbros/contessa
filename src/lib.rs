@@ -3,6 +3,7 @@
 mod engine;
 mod agent;
 mod player;
+mod human;
 
 use std::{
     fmt,
@@ -19,6 +20,7 @@ pub use engine::{
 
 pub use player::Player;
 pub use agent::Agent;
+pub use human::Human;
 
 /// Enumerates the cards availaBy default, the items in a module have private visibility, but this can be overridden with the pub modifier. Only the public items of a module can be accessed from outside the module scope.ble in the game.
 #[derive(Hash, PartialEq, Eq, Copy, Clone, Debug)]
@@ -29,6 +31,21 @@ pub enum Card {
     Assassin,
     Contessa,
     None,
+}
+
+impl fmt::Display for Card {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let output = match self {
+            Card::Duke => "Duke",
+            Card::Captain => "Captain",
+            Card::Ambassador => "Ambassador",
+            Card::Assassin => "Assassin",
+            Card::Contessa => "Contessa",
+            Card::None => "None",
+        };
+
+        write!(f, "{}", output)
+    }
 }
 
 /// Enumerates the actions available in the game.
@@ -59,7 +76,7 @@ impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let output = match self {
             Action::Income => "Income".to_string(),
-            Action::ForeignAid => "ForeignAid".to_string(),
+            Action::ForeignAid => "Foreign Aid".to_string(),
             Action::Coup (i) => format!("Coup player {}", i),
             Action::Tax => "Tax".to_string(),
             Action::Assassinate (i) => format!("Assassinate player {}", i),
