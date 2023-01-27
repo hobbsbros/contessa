@@ -9,14 +9,13 @@ use std::{
 
 use rand::{
     random,
-    seq::SliceRandom,
 };
 
 pub use engine::{
     Engine,
 };
 
-/// Enumerates the cards available in the game.
+/// Enumerates the cards availaBy default, the items in a module have private visibility, but this can be overridden with the pub modifier. Only the public items of a module can be accessed from outside the module scope.ble in the game.
 #[derive(Hash, PartialEq, Eq, Copy, Clone, Debug)]
 pub enum Card {
     Duke,
@@ -65,6 +64,47 @@ impl fmt::Display for Action {
         };
 
         write!(f, "{}", output)
+    }
+}
+
+/// Holds a distribution of utilities for each action.
+#[derive(Clone, Debug)]
+pub struct ActionUtilities {
+    pub income: f64,
+    pub foreignaid: f64,
+    pub coup: f64,
+    pub tax: f64,
+    pub assassinate: f64,
+    pub exchange: f64,
+    pub steal: f64,
+}
+
+/// Implements commonly used functions performed on action utilities.
+impl ActionUtilities {
+    /// Constructs a new, random action utility table.
+    pub fn random() -> Self {
+        Self {
+            income: 10.0*random::<f64>(),
+            foreignaid: 10.0*random::<f64>(),
+            coup: 10.0*random::<f64>(),
+            tax: 10.0*random::<f64>(),
+            assassinate: 10.0*random::<f64>(),
+            exchange: 10.0*random::<f64>(),
+            steal: 10.0*random::<f64>(),
+        }
+    }
+
+    /// "Mutates" an action utilities table by a small amount.
+    pub fn mutate(&self) -> Self {
+        Self {
+            income: self.income + 0.1*random::<f64>(),
+            foreignaid: self.foreignaid + 0.1*random::<f64>(),
+            coup: self.coup + 0.1*random::<f64>(),
+            tax: self.tax + 0.1*random::<f64>(),
+            assassinate: self.assassinate + 0.1*random::<f64>(),
+            exchange: self.exchange + 0.1*random::<f64>(),
+            steal: self.steal + 0.1*random::<f64>(),
+        }
     }
 }
 
@@ -132,6 +172,9 @@ pub struct Player {
     /// Establishes the perceived cutoff probability for lying.
     lying_cutoff: f64,
 
+    /// Stores the utilities for each action.
+    utilities: ActionUtilities,
+
     /// Stores the number of opponents this player is playing.
     opponents: usize,
 
@@ -149,19 +192,21 @@ impl Player {
             coins: 2,
             liar_cutoff: random(),
             lying_cutoff: random(),
+            utilities: ActionUtilities::random(),
             opponents,
             perceived_hands: Vec::new(),
         }
     }
 
-    /// Creates a new player with specified cutoffs.
-    pub fn with_specified_cutoffs(id: usize, opponents: usize, liar_cutoff: f64, lying_cutoff: f64) -> Self {
+    /// Creates a new player with specified patameters.
+    pub fn with_specified_parameters(id: usize, opponents: usize, liar_cutoff: f64, lying_cutoff: f64, utilities: ActionUtilities) -> Self {
         Self {
             id,
             hand: [Card::None, Card::None],
             coins: 2,
             liar_cutoff,
             lying_cutoff,
+            utilities,
             opponents,
             perceived_hands: Vec::new(),
         }
@@ -175,6 +220,7 @@ impl Player {
             coins: 2,
             liar_cutoff: self.liar_cutoff + 0.01 * (2.0*random::<f64>() - 1.0),
             lying_cutoff: self.lying_cutoff + 0.01 * (2.0*random::<f64>() - 1.0),
+            utilities: self.utilities.mutate(),
             opponents: self.opponents,
             perceived_hands: Vec::new(),
         }
@@ -505,14 +551,35 @@ impl Player {
         actions
     }
 
+    /// Computes the utility of a given action according to a utility table.
+    pub fn compute_utility(&self, action: Action) -> f64 {
+        match action {
+            Action::Income => self.utilities.income,
+            Action::ForeignAid => self.utilities.foreignaid,
+            Action::Coup (_) => self.utilities.coup,
+            Action::Tax => self.utilities.tax,
+            Action::Assassinate (_) => self.utilities.assassinate,
+            Action::Exchange => self.utilities.exchange,
+            Action::Steal (_) => self.utilities.steal,
+            Action::Pass => 0.0,
+        }
+    }
+    
     /// Select an action based on actions available.
     pub fn select_action(&self, eliminated_players: &[usize]) -> Action {
         let actions = self.get_available_actions(eliminated_players);
 
-        // Later this will be modified to be better than random selection.
+        // Compute the utility of each action
+        let mut utilities = actions.iter()
+            .map(|a| (*a, self.compute_utility(*a)))
+            .collect::<Vec<(Action, f64)>>();
+        
+        // Note: it's OK to use `Result::unwrap` here because we know
+        // we are passing a valid `f64` from our utility table
+        utilities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
-        // Note: it's OK to use `Option::unwrap` here because we know that at least
-        // one action will be available (Income)
-        *actions.choose(&mut rand::thread_rng()).unwrap()
+        // Note: it's OK to use `Option::unwrap` here because we know
+        // that at least one action will be available (even if it's `Pass`)
+        utilities.iter().nth(0).unwrap().0
     }
 }
