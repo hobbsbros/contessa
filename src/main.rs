@@ -14,6 +14,7 @@ fn main() {
 }
 
 /// Play one human against three computers.
+#[allow(dead_code)]
 fn play_alone() {
     let players: Vec<Box<dyn Player>> = vec![
         Box::new(Human::new(0, 3)),
@@ -65,7 +66,8 @@ fn play_alone() {
 }
 
 /// Train 1000 Contessa Engines against one another for a specified number of generations.
-fn train(generations: usize) {
+#[allow(dead_code)]
+pub fn train(generations: usize) {
     // FIRST GENERATION //
     let mut winners = Vec::new();
 

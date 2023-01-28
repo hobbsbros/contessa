@@ -204,12 +204,11 @@ impl Engine {
                 }
 
                 if self.players[self.active_player].check(card) {
-                    if verbose {
-                        println!("Player {} loses influence", i);
-                    }
-
                     // Challenger loses influence
                     let killed = self.players[i].lose_influence();
+                    if verbose {
+                        println!("Player {} loses {}", i, killed);
+                    }
                     if killed != Card::None {
                         self.killed.push(killed);
                     }
@@ -220,12 +219,11 @@ impl Engine {
                     self.players[self.active_player].replace(card, self.deck[0]);
                     self.deck.drain(0..1);
                 } else {
-                    if verbose {
-                        println!("Player {} loses influence", self.active_player);
-                    }
-                    
                     // Active player loses influence
                     let killed = self.players[self.active_player].lose_influence();
+                    if verbose {
+                        println!("Player {} loses {}", self.active_player, killed);
+                    }
                     if killed != Card::None {
                         self.killed.push(killed);
                     }
@@ -262,12 +260,11 @@ impl Engine {
     
                             // Check if Player I actually has the card
                             if self.players[i].check(card) {
-                                if verbose {
-                                    println!("Player {} loses influence", j);
-                                }
-    
                                 // Player J loses influence
                                 let killed = self.players[j].lose_influence();
+                                if verbose {
+                                    println!("Player {} loses {}", j, killed);
+                                }
                                 if killed != Card::None {
                                     self.killed.push(killed);
                                 }
@@ -281,12 +278,11 @@ impl Engine {
                                 // The active player does not complete the action
                                 prevented = true;
                             } else {
-                                if verbose {
-                                    println!("Player {} loses influence", i);
-                                }
-    
                                 // Player I loses influence
                                 let killed = self.players[i].lose_influence();
+                                if verbose {
+                                    println!("Player {} loses {}", i, killed);
+                                }
                                 if killed != Card::None {
                                     self.killed.push(killed);
                                 }
