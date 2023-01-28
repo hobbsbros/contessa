@@ -94,13 +94,15 @@ impl Engine {
 
     /// Asks each player (in turn) whether or not he block an action.
     /// 
-    /// Returns `Some(i)`, where `i` is the ID of the first player to block
+    /// Returns `Some((i, card))`, where `i` is the ID of the first player to block
     /// the action, or `None` if nobody blocks.
     fn check_blocks(&self, actor: usize, action: Action) -> Option<(usize, Card)> {
         for (i, player) in self.players.iter().enumerate() {
-            let (chk, card) = player.check_block(action);
-            if i != actor && chk && !player.is_eliminated() {
-                return Some((i, card));
+            if i != actor {
+                let (chk, card) = player.check_block(action);
+                if chk && !player.is_eliminated() {
+                    return Some((i, card));
+                }
             }
         }
 
@@ -258,6 +260,7 @@ impl Engine {
                                 println!("Player {} challenges Player {}", j, i);
                             }
     
+                            // Check if Player I actually has the card
                             if self.players[i].check(card) {
                                 if verbose {
                                     println!("Player {} loses influence", j);
@@ -274,7 +277,7 @@ impl Engine {
                                 self.deck.push(card);
                                 self.players[i].replace(card, self.deck[0]);
                                 self.deck.drain(0..1);
-    
+
                                 // The active player does not complete the action
                                 prevented = true;
                             } else {
